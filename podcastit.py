@@ -68,7 +68,7 @@ def update_feed(urlfilepath, feedpath):
         rows = [row for row in csv.reader(file)]
 
     server = os.environ["SERVER_NAME"]
-    feedid = "http://{}/{}".format(server, feedpath)
+    feedid = "http://{0}/{1}".format(server, feedpath)
     fg = FeedGenerator()
     fg.title("Audio from the interwebs")
     fg.id(feedid)
