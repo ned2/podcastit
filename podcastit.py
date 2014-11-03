@@ -1,9 +1,25 @@
 #!/usr/bin/env python2
 
 """podcastit.py
+Author: Ned Letcher
 
 Script to build a podcast feed from arbitrary URLs found online.
 
+Usage:
+
+This script runs as a serverside CGI script. To add a podcast to your
+feed submit a HTTP POST or GET request to URL where this script is run
+from with the following form data:
+
+url       -- Address of file to be added to the feed
+
+feedname  -- Optional feedname. Defaults to 'podcast'.
+
+
+The script will append a new entry in the file {feedname}.csv, which
+is then used to generate an updated version of {feedname}.xml. Both
+files are stored in the same directory the script is run from unless
+the FEEDDIR constant is changed.
 
 """
 
@@ -22,8 +38,14 @@ from urlparse import urlparse
 from feedgen.feed import FeedGenerator
 
 
+# name of feed
 FEEDNAME = "podcast"
+
+# type of feed to generate. 'rss' is the other option
 FEEDTYPE = 'atom'
+
+# location to store csv and xml files
+FEEDDIR = os.path.dirname(os.path.realpath(__file__))
 
 
 class PodcastitError(Exception):
