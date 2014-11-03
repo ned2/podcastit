@@ -79,7 +79,7 @@ def update_feed(urlfilepath, feedpath):
         date, url = row
         domain = urlparse(url).netloc
         title = "{0} -- {1}".format(domain, date)
-        content = "This audio file from {} was added on {}.".format(domain, date) 
+        content = "This audio file from {0} was added on {1}.".format(domain, date) 
         fe = fg.add_entry()            
         fe.id(url)
         fe.title(title)
