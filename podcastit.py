@@ -44,7 +44,8 @@ FEEDNAME = "podcast"
 # type of feed to generate. 'rss' is the other option
 FEEDTYPE = 'atom'
 
-# location to store csv and xml files
+# Location to store csv and xml files.  Change if you want to put
+# files somewhere other than same directory of this script.
 FEEDDIR = os.path.dirname(os.path.realpath(__file__))
 
 
@@ -64,8 +65,7 @@ def add_url(url, date, urlspath):
 
 def update_feed(urlfilepath, feedpath):
     with open(urlfilepath) as file:
-        reader = csv.reader(file)
-        rows = [row for row in reader]
+        rows = [row for row in csv.reader(file)]
 
     server = os.environ["SERVER_NAME"]
     feedid = "http://{}/{}".format(server, feedpath)
@@ -74,11 +74,12 @@ def update_feed(urlfilepath, feedpath):
     fg.id(feedid)
 
     for row in rows:
+        # for each row from CSV file, add a FeedEntry object to the
+        # Feedgenerator
         date, url = row
         domain = urlparse(url).netloc
-        title = "{} -- {}".format(domain, date)
+        title = "{0} -- {1}".format(domain, date)
         content = "This audio file from {} was added on {}.".format(domain, date) 
-
         fe = fg.add_entry()            
         fe.id(url)
         fe.title(title)
