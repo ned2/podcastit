@@ -3,13 +3,14 @@
 """podcastit.py
 Author: Ned Letcher
 
-Script to build a podcast feed from arbitrary URLs found online.
+A server side Python script to generate a bare-ones podcast feed from
+arbitrary URLs
 
 Usage:
 
 This script runs as a serverside CGI script. To add a podcast to your
-feed submit a HTTP POST or GET request to URL where this script is run
-from with the following form data:
+feed submit a HTTP POST or GET request to to the script with the
+following form data:
 
 url       -- Address of file to be added to the feed
 
@@ -18,13 +19,9 @@ feedname  -- Optional feedname. Defaults to 'podcast'.
 
 The script will append a new entry in the file {feedname}.csv, which
 is then used to generate an updated version of {feedname}.xml. Both
-files are stored in the same directory the script is run from unless
-the FEEDDIR constant is changed.
+files are stored in the same directory the script by default.
 
 """
-
-import cgitb
-cgitb.enable(logdir='/tmp')
 
 import json
 import datetime
@@ -58,12 +55,21 @@ class PodcastitError(Exception):
 
 
 def add_url(url, date, urlspath):
+    """Append a (date,URL) entry to a CSV file."""
     with open(urlspath, 'a') as file:
         writer = csv.writer(file)
         writer.writerow((date, url))
 
 
-def update_feed(urlfilepath, feedpath):
+def update_feed(urlfilepath, feedpath, feedtype='atom'):
+    """Writes a podcast feed based on a CSV file of URLS. 
+
+    Parameters:
+    urlfilepath -- path of CSV file containing date,url entries
+    feedpath    -- path to write feed file to
+    feedtype    -- type of feed, possible values: 'atom' or 'rss'
+
+    """
     with open(urlfilepath) as file:
         rows = [row for row in csv.reader(file)]
 
@@ -87,13 +93,19 @@ def update_feed(urlfilepath, feedpath):
         fe.content(content)
         fe.published(date)
     
-    if FEEDTYPE == 'atom':
+    if feedtype == 'atom':
         fg.atom_file(feedpath)
     else:
         fg.rss_file(feedpath)
         
 
 def add_entry(form):
+    """Add a new podcast URL and generate/update the new podcast feed.
+    
+    Parameters:
+    form -- a cgi.FieldStorage object that should have a field 'url'
+
+    """
     success = True
     try:
         url = form.getfirst('url')
@@ -105,7 +117,7 @@ def add_entry(form):
         feedfilename = feedname + '.xml' 
         now = datetime.datetime.now(dateutil.tz.tzutc())
         add_url(url, now, urlfilename)
-        update_feed(urlfilename, feedfilename)
+        update_feed(urlfilename, feedfilename, FEEDTYPE)
         message = "URL was added to feed"
     except PodcastitError as e:
         success = False
@@ -120,7 +132,7 @@ def add_entry(form):
 def main():
     form = cgi.FieldStorage()
     result = add_entry(form)
-    print 'Content-Type: application/json; charset=utf-8\n\n' 
+    print 'Content-Type: application/json; charset=utf-8\n' 
     print result
 
 
