@@ -1,4 +1,4 @@
-#!/usr/bin/env python
+#!/usr/bin/env python3
 
 """podcastit.py
 Author: Ned Letcher
@@ -28,22 +28,32 @@ import datetime
 import dateutil
 import cgi
 import sys
+import codecs
 import os
 import csv
+import urllib.parse
 
-from urlparse import urlparse 
 from feedgen.feed import FeedGenerator
 
+# Script Defaults
 
 # name of feed
-FEEDNAME = "podcast"
+FEED_NAME = "podcastit"
 
 # type of feed to generate. 'rss' is the other option
-FEEDTYPE = 'atom'
+FEED_TYPE = 'atom'
 
 # Location to store csv and xml files.  Change if you want to put
 # files somewhere other than same directory of this script.
-FEEDDIR = os.path.dirname(os.path.realpath(__file__))
+FEED_DIR = os.path.dirname(os.path.realpath(__file__))
+
+server = os.environ["SERVER_NAME"]
+
+# canonicaDl URL of the feed.  
+FEED_ID = "http://{}/{}".format(server, FEED_NAME+'.py')
+
+# URL of the image for the podcast
+FEED_LOGO = "http://{}/{}".format(server, FEED_NAME+'.png')
 
 
 class PodcastitError(Exception):
@@ -54,86 +64,90 @@ class PodcastitError(Exception):
         return self.msg
 
 
-def add_url(url, date, urlspath):
-    """Append a (date,URL) entry to a CSV file."""
-    with open(urlspath, 'a') as file:
-        writer = csv.writer(file)
-        writer.writerow((date, url))
-
-
-def update_feed(urlfilepath, feedpath, feedtype='atom'):
+def get_feed(csv_path, feed_type):
     """Writes a podcast feed based on a CSV file of URLS. 
 
     Parameters:
     urlfilepath -- path of CSV file containing date,url entries
-    feedpath    -- path to write feed file to
     feedtype    -- type of feed, possible values: 'atom' or 'rss'
 
     """
-    with open(urlfilepath) as file:
+    with open(csv_path, encoding='utf-8') as file:
         rows = [row for row in csv.reader(file)]
 
-    server = os.environ["SERVER_NAME"]
-    feedid = "http://{0}/{1}".format(server, feedpath)
     fg = FeedGenerator()
     fg.title("Audio from the interwebs")
-    fg.id(feedid)
+    fg.logo(FEED_LOGO)
+    fg.id(FEED_ID)
 
     for row in rows:
         # for each row from CSV file, add a FeedEntry object to the
         # Feedgenerator
-        date, url = row
-        domain = urlparse(url).netloc
-        title = "{0} -- {1}".format(domain, date)
-        content = "This audio file from {0} was added on {1}.".format(domain, date) 
+        date, url, title = row
+        url_quoted = urllib.parse.quote(url, ':/')
+        domain = urllib.parse.urlparse(url).netloc
+        content = "This audio file from {} was added on {}.".format(domain, date) 
         fe = fg.add_entry()            
         fe.id(url)
         fe.title(title)
-        fe.link({'href': url, 'rel' : 'enclosure'})
+        fe.link({'href': url_quoted, 'rel' : 'enclosure'})
         fe.content(content)
         fe.published(date)
-    
-    if feedtype == 'atom':
-        fg.atom_file(feedpath)
+
+    if feed_type == 'atom':
+        func = fg.atom_str
     else:
-        fg.rss_file(feedpath)
-        
+        func = fg.rss_str
 
-def add_entry(form):
-    """Add a new podcast URL and generate/update the new podcast feed.
-    
-    Parameters:
-    form -- a cgi.FieldStorage object that should have a field 'url'
-
-    """
-    success = True
-    try:
-        url = form.getfirst('url')
-        if url is None:
-            raise PodcastitError("No URL was specified")
-            
-        feedname = form.getfirst('feedname', FEEDNAME)       
-        urlfilename = feedname + '.csv'
-        feedfilename = feedname + '.xml' 
-        now = datetime.datetime.now(dateutil.tz.tzutc())
-        add_url(url, now, urlfilename)
-        update_feed(urlfilename, feedfilename, FEEDTYPE)
-        message = "URL was added to feed"
-    except PodcastitError as e:
-        success = False
-        message = e.msg
-
-    message = "URL successfully added to feed"
-    result = {'status'  : success,
-              'message' : message }
-    return json.dumps(result)
+    return func(pretty=True, encoding='UTF-8')
 
 
 def main():
+    # Need to tell server that it can print in UTF since it's not
+    # attached to a terminal
+    sys.stdout = codecs.getwriter('utf8')(sys.stdout.buffer)
+
     form = cgi.FieldStorage()
-    result = add_entry(form)
-    print 'Content-Type: application/json; charset=utf-8\n' 
-    print result
+    url = form.getfirst('url')
+    feedname = form.getfirst('feedname', FEED_NAME)       
+    csv_path = os.path.join(FEED_DIR, feedname + '.csv')
+    content_type = 'xml'
+
+    try:
+        if url:
+            # add the URL entry to the CSV file
+            parsed = urllib.parse.urlparse(url)
+            domain = parsed.netloc
+
+            if domain == "":
+                raise PodcastitError("'{}' is not a valid URL".format(url))
+
+            filename = parsed.path.split('/')[-1]
+            title = form.getfirst('title', "'{}' from {}".format(filename, domain))
+            date = datetime.datetime.now(dateutil.tz.tzutc())
+
+            with open(csv_path, 'a', encoding="utf-8") as file:
+                writer = csv.writer(file)
+                writer.writerow((date, url, title))
+
+                content_type = 'json'
+            content = json.dumps({'message' : 'successfully added URL'})
+        else:
+            feed_type = form.getfirst('feedtype', FEED_TYPE)
+            if feed_type not in ('rss', 'atom'):
+                raise PodcastitError("'{}' is not a valid feed type".format(feed_type))
+            content = get_feed(csv_path, feed_type)
+    except PodcastitError as e:
+        content_type = 'json'
+        content = json.dumps({'message' : e.msg})
+
+    if content_type == 'xml':
+        sys.stdout.write('Content-Type: application/xml; charset=utf-8\n\n')
+        sys.stdout.write(str(content, 'utf8'))
+    else:
+        sys.stdout.write('Content-Type: application/json; charset=utf-8\n\n')
+        sys.stdout.write(content)
+
 
 
 if __name__ == "__main__":
